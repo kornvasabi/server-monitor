@@ -1,163 +1,351 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="th">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Server Monitor Dashboard</title>
     <script src="/socket.io/socket.io.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0f172a; color: #e2e8f0; padding: 30px; }
-        h1 { margin-bottom: 25px; font-size: 26px; color: #f8fafc; font-weight: 600; }
-        
-        .container { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 20px; }
-        .chart-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 20px; }
-        
-        .box { background: #1e293b; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); border: 1px solid #334155; }
-        .box h3 { font-size: 13px; color: #94a3b8; text-transform: uppercase; margin-bottom: 12px; letter-spacing: 0.5px; }
-        
-        .value { font-size: 32px; font-weight: 700; }
-        .cpu-color { color: #38bdf8; }
-        .ram-color { color: #4ade80; }
-        .disk-color { color: #f87171; }
-        .uptime-color { color: #c084fc; }
-        
-        .net-details { font-size: 16px; line-height: 2; }
-        
-        .service-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #334155; }
-        .service-item:last-child { border-bottom: none; }
-        .status-badge { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
-        .status-running { background-color: #065f46; color: #34d399; }
-        .status-stopped { background-color: #78350f; color: #fbbf24; }
-        .service-usage { font-size: 11px; color: #64748b; margin-left: 6px; }
+        * { font-family: 'Inter', sans-serif; }
+        .glass-card {
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+        }
+        .gradient-bg {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+        }
+        .pulse-dot {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .chart-container { min-height: 250px; }
     </style>
 </head>
-<body>
-
-    <h1>💻 Server Status Monitor Room</h1>
-    
-    <div class="container">
-        <div class="box">
-            <h3>CPU Load</h3>
-            <div class="value cpu-color"><span id="cpu">0.00</span> %</div>
-        </div>
-        <div class="box">
-            <h3>RAM Usage</h3>
-            <div class="value ram-color"><span id="ram">0.00</span> %</div>
-        </div>
-        <div class="box">
-            <h3>Disk Usage</h3>
-            <div class="value disk-color"><span id="disk">0.00</span> %</div>
-        </div>
-        <div class="box">
-            <h3>Network Traffic</h3>
-            <div class="net-details">
-                <div>⬇️ Inbound: <strong style="color: #2dd4bf;"><span id="netRx">0.00</span> MB/s</strong></div>
-                <div>⬆️ Outbound: <strong style="color: #fb923c;"><span id="netTx">0.00</span> MB/s</strong></div>
+<body class="gradient-bg min-h-screen text-slate-200">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+            <div>
+                <h1 class="text-3xl font-bold text-white flex items-center gap-3">
+                    <span class="text-4xl">🖥️</span>
+                    Server Monitor Dashboard
+                </h1>
+                <p class="text-slate-400 mt-2">Real-time server performance monitoring</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <div class="flex items-center gap-2 px-4 py-2 rounded-full glass-card">
+                    <span class="w-2 h-2 bg-green-500 rounded-full pulse-dot"></span>
+                    <span class="text-sm text-green-400 font-medium">Live</span>
+                </div>
+                <div id="server-info" class="text-sm text-slate-400"></div>
             </div>
         </div>
-        <div class="box">
-            <h3>System Uptime</h3>
-            <div class="value uptime-color"><span id="uptime">0.0</span> Hrs</div>
-        </div>
-        <div class="box">
-            <h3>⚙️ Services Status</h3>
-            <div id="services-list">กำลังเชื่อมต่อข้อมูล...</div>
-        </div>
-    </div>
 
-    <div class="chart-container">
-        <div class="box">
-            <h3>CPU Load History (%)</h3>
-            <div id="cpuChart"></div>
+        <!-- System Info Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div class="glass-card rounded-2xl p-5 hover:scale-[1.02] transition-transform duration-300">
+                <div class="flex justify-between items-start mb-3">
+                    <span class="text-slate-400 text-sm font-medium">CPU Load</span>
+                    <span class="text-2xl">🔥</span>
+                </div>
+                <div class="text-3xl font-bold text-cyan-400" id="cpu">0.00%</div>
+                <div class="mt-2 flex items-center gap-2 text-xs text-slate-500">
+                    <span>Temp: <span id="cpuTemp" class="text-orange-400">0°C</span></span>
+                </div>
+            </div>
+
+            <div class="glass-card rounded-2xl p-5 hover:scale-[1.02] transition-transform duration-300">
+                <div class="flex justify-between items-start mb-3">
+                    <span class="text-slate-400 text-sm font-medium">RAM Usage</span>
+                    <span class="text-2xl">💾</span>
+                </div>
+                <div class="text-3xl font-bold text-emerald-400" id="ram">0.00%</div>
+                <div class="mt-2 text-xs text-slate-500">
+                    <span id="ramUsed">0</span> / <span id="ramTotal">0</span> GB
+                </div>
+            </div>
+
+            <div class="glass-card rounded-2xl p-5 hover:scale-[1.02] transition-transform duration-300">
+                <div class="flex justify-between items-start mb-3">
+                    <span class="text-slate-400 text-sm font-medium">Disk Usage</span>
+                    <span class="text-2xl">💿</span>
+                </div>
+                <div class="text-3xl font-bold text-rose-400" id="disk">0.00%</div>
+                <div class="mt-2 text-xs text-slate-500">
+                    <span id="diskUsed">0</span> / <span id="diskTotal">0</span> GB
+                </div>
+            </div>
+
+            <div class="glass-card rounded-2xl p-5 hover:scale-[1.02] transition-transform duration-300">
+                <div class="flex justify-between items-start mb-3">
+                    <span class="text-slate-400 text-sm font-medium">System Uptime</span>
+                    <span class="text-2xl">⏱️</span>
+                </div>
+                <div class="text-3xl font-bold text-violet-400" id="uptime">0.0 hrs</div>
+                <div class="mt-2 text-xs text-slate-500">Since last reboot</div>
+            </div>
         </div>
-        <div class="box">
-            <h3>RAM Usage History (%)</h3>
-            <div id="ramChart"></div>
+
+        <!-- Network & Load Average -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            <div class="glass-card rounded-2xl p-5">
+                <div class="flex justify-between items-start mb-4">
+                    <span class="text-slate-400 text-sm font-medium">Network Traffic</span>
+                    <span class="text-2xl">🌐</span>
+                </div>
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center">
+                        <span class="text-slate-400 text-sm">⬇️ Download</span>
+                        <span class="text-lg font-semibold text-teal-400" id="netRx">0.00 MB/s</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-slate-400 text-sm">⬆️ Upload</span>
+                        <span class="text-lg font-semibold text-amber-400" id="netTx">0.00 MB/s</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass-card rounded-2xl p-5">
+                <div class="flex justify-between items-start mb-4">
+                    <span class="text-slate-400 text-sm font-medium">Load Average</span>
+                    <span class="text-2xl">📊</span>
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                    <div class="text-center">
+                        <div class="text-lg font-bold text-blue-400" id="loadAvg1">0.00</div>
+                        <div class="text-xs text-slate-500">1 min</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-lg font-bold text-blue-400" id="loadAvg5">0.00</div>
+                        <div class="text-xs text-slate-500">5 min</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-lg font-bold text-blue-400" id="loadAvg15">0.00</div>
+                        <div class="text-xs text-slate-500">15 min</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass-card rounded-2xl p-5">
+                <div class="flex justify-between items-start mb-4">
+                    <span class="text-slate-400 text-sm font-medium">Processes</span>
+                    <span class="text-2xl">⚙️</span>
+                </div>
+                <div class="space-y-2">
+                    <div class="flex justify-between items-center">
+                        <span class="text-slate-400 text-sm">Total</span>
+                        <span class="text-lg font-semibold text-white" id="processCount">0</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-slate-400 text-sm">Running</span>
+                        <span class="text-lg font-semibold text-green-400" id="processRunning">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Disk I/O -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div class="glass-card rounded-2xl p-5">
+                <div class="flex justify-between items-start mb-4">
+                    <span class="text-slate-400 text-sm font-medium">Disk I/O</span>
+                    <span class="text-2xl">💽</span>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="text-center p-3 rounded-xl bg-slate-800/50">
+                        <div class="text-2xl font-bold text-cyan-400" id="diskRead">0.00</div>
+                        <div class="text-xs text-slate-500 mt-1">Read MB/s</div>
+                    </div>
+                    <div class="text-center p-3 rounded-xl bg-slate-800/50">
+                        <div class="text-2xl font-bold text-pink-400" id="diskWrite">0.00</div>
+                        <div class="text-xs text-slate-500 mt-1">Write MB/s</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass-card rounded-2xl p-5">
+                <div class="flex justify-between items-start mb-4">
+                    <span class="text-slate-400 text-sm font-medium">Memory Details</span>
+                    <span class="text-2xl">🧠</span>
+                </div>
+                <div class="grid grid-cols-3 gap-3">
+                    <div class="text-center">
+                        <div class="text-lg font-bold text-emerald-400" id="ramUsed">0</div>
+                        <div class="text-xs text-slate-500">Used GB</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-lg font-bold text-blue-400" id="ramFree">0</div>
+                        <div class="text-xs text-slate-500">Free GB</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-lg font-bold text-violet-400" id="ramTotal">0</div>
+                        <div class="text-xs text-slate-500">Total GB</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <div class="glass-card rounded-2xl p-5">
+                <h3 class="text-slate-400 text-sm font-medium mb-4">CPU Load History</h3>
+                <div id="cpuChart" class="chart-container"></div>
+            </div>
+            <div class="glass-card rounded-2xl p-5">
+                <h3 class="text-slate-400 text-sm font-medium mb-4">RAM Usage History</h3>
+                <div id="ramChart" class="chart-container"></div>
+            </div>
+        </div>
+
+        <!-- Services Status -->
+        <div class="glass-card rounded-2xl p-5">
+            <div class="flex justify-between items-start mb-4">
+                <h3 class="text-slate-400 text-sm font-medium">Services Status</h3>
+                <span class="text-2xl">🔧</span>
+            </div>
+            <div id="services-list" class="text-slate-400">กำลังเชื่อมต่อข้อมูล...</div>
         </div>
     </div>
 
     <script>
-        // กำหนดโครงสร้างและดีไซน์ของกราฟ
         const chartOptions = (color, name) => ({
             series: [{ name: name, data: [] }],
-            chart: { type: 'line', height: 200, animations: { enabled: true, easing: 'linear', dynamicAnimation: { speed: 1000 } }, toolbar: { show: false } },
-            stroke: { curve: 'smooth', width: 3 },
+            chart: { 
+                type: 'area', 
+                height: 250, 
+                animations: { enabled: true, easing: 'linear', dynamicAnimation: { speed: 1000 } }, 
+                toolbar: { show: false },
+                background: 'transparent'
+            },
+            stroke: { curve: 'smooth', width: 2 },
             colors: [color],
-            xaxis: { labels: { show: false } },
-            yaxis: { max: 100, min: 0, labels: { style: { colors: '#94a3b8' } } },
-            grid: { borderColor: '#334155' }
+            fill: {
+                type: 'gradient',
+                gradient: {
+                    shadeIntensity: 1,
+                    opacityFrom: 0.7,
+                    opacityTo: 0.1,
+                    stops: [0, 90, 100]
+                }
+            },
+            xaxis: { 
+                labels: { show: false },
+                axisBorder: { show: false },
+                axisTicks: { show: false }
+            },
+            yaxis: { 
+                max: 100, 
+                min: 0, 
+                labels: { 
+                    style: { colors: '#94a3b8' } 
+                } 
+            },
+            grid: { 
+                borderColor: 'rgba(148, 163, 184, 0.1)',
+                strokeDashArray: 4
+            },
+            theme: { mode: 'dark' }
         });
 
-        // สร้างกราฟสำหรับ CPU และ RAM
-        const cpuChart = new ApexCharts(document.querySelector("#cpuChart"), chartOptions('#38bdf8', 'CPU'));
-        const ramChart = new ApexCharts(document.querySelector("#ramChart"), chartOptions('#4ade80', 'RAM'));
+        const cpuChart = new ApexCharts(document.querySelector("#cpuChart"), chartOptions('#22d3ee', 'CPU'));
+        const ramChart = new ApexCharts(document.querySelector("#ramChart"), chartOptions('#34d399', 'RAM'));
         
         cpuChart.render();
         ramChart.render();
 
         const cpuDataList = [];
         const ramDataList = [];
-        const MAX_DATA_POINTS = 20; // ให้กราฟเก็บข้อมูลย้อนหลังสูงสุด 20 จุด
+        const MAX_DATA_POINTS = 30;
 
         const socket = io();
-		
-		// 🌟 [เพิ่มใหม่] รับข้อมูลประวัติก่อนวาดกราฟปัจจุบัน
+        
         socket.on('initial-history', (historyData) => {
-            // ข้อมูลจาก DB เรียงจากใหม่ไปเก่า (DESC) เราต้องใช้ .reverse() ให้เรียงจากเก่ามาใหม่
             historyData.reverse().forEach(row => {
                 cpuDataList.push(parseFloat(row.cpu_percent));
                 ramDataList.push(parseFloat(row.ram_percent));
             });
-            // อัปเดตกราฟทันที
             cpuChart.updateSeries([{ data: cpuDataList }]);
             ramChart.updateSeries([{ data: ramDataList }]);
         });
-		
+        
         socket.on('server-data', (data) => {
-            // 1. อัปเดตตัวเลขการ์ดด้านบน
-            document.getElementById('cpu').innerText = data.cpu;
-            document.getElementById('ram').innerText = data.ram;
-            document.getElementById('disk').innerText = data.disk;
-            document.getElementById('netRx').innerText = data.netRx;
-            document.getElementById('netTx').innerText = data.netTx;
-            document.getElementById('uptime').innerText = data.uptime;
+            // Update main metrics
+            document.getElementById('cpu').innerText = data.cpu + '%';
+            document.getElementById('cpuTemp').innerText = data.cpuTemp + '°C';
+            document.getElementById('ram').innerText = data.ram + '%';
+            document.getElementById('ramUsed').innerText = data.ramUsed;
+            document.getElementById('ramFree').innerText = data.ramFree;
+            document.getElementById('ramTotal').innerText = data.ramTotal;
+            document.getElementById('disk').innerText = data.disk + '%';
+            document.getElementById('diskUsed').innerText = data.diskUsed;
+            document.getElementById('diskTotal').innerText = data.diskTotal;
+            document.getElementById('netRx').innerText = data.netRx + ' MB/s';
+            document.getElementById('netTx').innerText = data.netTx + ' MB/s';
+            document.getElementById('uptime').innerText = data.uptime + ' hrs';
+            document.getElementById('loadAvg1').innerText = data.loadAvg1.toFixed(2);
+            document.getElementById('loadAvg5').innerText = data.loadAvg5.toFixed(2);
+            document.getElementById('loadAvg15').innerText = data.loadAvg15.toFixed(2);
+            document.getElementById('processCount').innerText = data.processCount;
+            document.getElementById('processRunning').innerText = data.processRunning;
+            document.getElementById('diskRead').innerText = data.diskRead;
+            document.getElementById('diskWrite').innerText = data.diskWrite;
 
-            // 2. อัปเดตระบบกราฟ
+            // Update server info
+            if (data.osInfo && data.cpuInfo) {
+                document.getElementById('server-info').innerHTML = `
+                    <span class="hidden md:inline">${data.osInfo.distro} ${data.osInfo.release}</span>
+                    <span class="hidden md:inline">|</span>
+                    <span>${data.cpuInfo.manufacturer} ${data.cpuInfo.brand}</span>
+                `;
+            }
+
+            // Update charts
             cpuDataList.push(parseFloat(data.cpu));
             ramDataList.push(parseFloat(data.ram));
 
-            if (cpuDataList.length > MAX_DATA_POINTS) { cpuDataList.shift(); ramDataList.shift(); }
+            if (cpuDataList.length > MAX_DATA_POINTS) { 
+                cpuDataList.shift(); 
+                ramDataList.shift(); 
+            }
 
             cpuChart.updateSeries([{ data: cpuDataList }]);
             ramChart.updateSeries([{ data: ramDataList }]);
 
-            // 3. อัปเดตรายการ Services
+            // Update services
             const servicesList = document.getElementById('services-list');
             servicesList.innerHTML = '';
 
             if (data.services && data.services.length > 0) {
                 data.services.forEach(service => {
                     const isRunning = service.running;
-                    const badgeClass = isRunning ? 'status-badge status-running' : 'status-badge status-stopped';
-                    const statusText = isRunning ? 'Active' : 'Inactive';
+                    const statusClass = isRunning ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30';
+                    const statusText = isRunning ? 'Running' : 'Stopped';
                     
                     const cpuUsage = service.cpu ? service.cpu.toFixed(1) : '0.0';
                     const memUsage = service.mem ? service.mem.toFixed(1) : '0.0';
 
                     servicesList.innerHTML += `
-                        <div class="service-item">
-                            <div>
-                                <strong>${service.name.toUpperCase()}</strong>
-                                <span class="service-usage">(C: ${cpuUsage}% M: ${memUsage}%)</span>
+                        <div class="flex justify-between items-center p-3 rounded-xl bg-slate-800/50 border border-slate-700/50 hover:border-slate-600/50 transition-colors">
+                            <div class="flex items-center gap-3">
+                                <div class="w-2 h-2 rounded-full ${isRunning ? 'bg-green-500' : 'bg-red-500'}"></div>
+                                <div>
+                                    <div class="font-semibold text-white">${service.name.toUpperCase()}</div>
+                                    <div class="text-xs text-slate-500">CPU: ${cpuUsage}% | MEM: ${memUsage}%</div>
+                                </div>
                             </div>
-                            <span class="${badgeClass}">${statusText}</span>
+                            <span class="px-3 py-1 rounded-full text-xs font-medium border ${statusClass}">${statusText}</span>
                         </div>
                     `;
                 });
             } else {
-                servicesList.innerHTML = '<span style="color: #64748b; font-size: 13px;">ไม่พบ Service ที่ตรวจสอบ (ระบบรองรับบน Linux เป็นหลัก)</span>';
+                servicesList.innerHTML = '<div class="text-slate-500 text-sm">ไม่พบ Service ที่ตรวจสอบ (ระบบรองรับบน Linux เป็นหลัก)</div>';
             }
         });
     </script>
