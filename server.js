@@ -31,6 +31,7 @@ async function sendTelegramAlert(message) {
 const ALERT_COOLDOWN_MS = parseInt(process.env.ALERT_COOLDOWN_MS) || 5 * 60 * 1000; // ตั้งไว้ 5 นาที (แก้ไขได้)
 let lastCpuAlertTime = 0;
 let serviceAlertStatus = {}; // เก็บเวลาที่แจ้งเตือนของแต่ละ Service
+let initiallyRunningServices = new Set(); // เก็บ Service ที่เคยทำงานตั้งแต่เริ่มระบบ
 
 // ==========================================
 // ⚙️ ตั้งค่า Database
@@ -128,13 +129,19 @@ io.on('connection', async (socket) => {
             // ❌ แจ้งเตือน Service หยุดทำงาน (ทำงานเฉพาะบน Linux เท่านั้น)
             if (os.platform() === 'linux' && servicesData && servicesData.length > 0) {
                 servicesData.forEach(service => {
-                    if (!service.running) { 
+                    // 🛠️ บันทึก Service ที่เคยทำงาน (เพื่อเช็คว่าเคยเปิดมาหรือไม่)
+                    if (service.running) {
+                        initiallyRunningServices.add(service.name);
+                    }
+
+                    // 🛠️ แจ้งเตือนเฉพาะ Service ที่เคยทำงานมาก่อนเท่านั้น
+                    if (!service.running && initiallyRunningServices.has(service.name)) {
                         const lastAlert = serviceAlertStatus[service.name] || 0;
                         if (now - lastAlert > ALERT_COOLDOWN_MS) {
                             sendTelegramAlert(`❌ [ฉุกเฉิน] Service ร่วง!\nระบบ ${service.name.toUpperCase()} หยุดทำงาน กรุณาตรวจสอบด่วนครับ`);
                             serviceAlertStatus[service.name] = now;
                         }
-                    } else {
+                    } else if (service.running) {
                         if (serviceAlertStatus[service.name]) {
                             sendTelegramAlert(`✅ [กลับสู่สภาวะปกติ]\nระบบ ${service.name.toUpperCase()} กลับมาทำงานปกติแล้วครับ`);
                             delete serviceAlertStatus[service.name];
